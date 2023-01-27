@@ -1,7 +1,8 @@
 <script setup>
-import { ref, onMounted, onUpdated } from "vue";
+import { ref, onMounted, watch } from "vue";
 
 const ticker = ref('');
+const filter = ref('');
 const tickers = ref([]);
 const selectedTicker = ref(null);
 const graph = ref([]);
@@ -9,6 +10,9 @@ const showAlreadyAdded = ref(false);
 const searchData = ref([]);
 const sortedSearchData = ref([]);
 const loading = ref(true);
+
+const page = ref(1);
+let lastPage = ref()
 
 
 onMounted(async () => {
@@ -21,9 +25,22 @@ onMounted(async () => {
     tickers.value = JSON.parse(localStorage.getItem("cryptonomicon-list"))
     tickers.value.forEach((item) => update(item.name))
   }
-  console.log(localStorage.getItem("cryptonomicon-list"))
+
+  const dataURL = Object.fromEntries(new URL(window.location.href).searchParams.entries())
+
+  filter.value = dataURL.filter
+  page.value = +dataURL.page
 })
 
+watch(filter, () => {
+  page.value = 1
+
+  window.history.pushState(null, document.title, `${window.location.pathname}?filter=${filter.value}&page=${page.value}`)
+})
+
+watch(page, () => {
+  window.history.pushState(null, document.title, `${window.location.pathname}?filter=${filter.value}&page=${page.value}`)
+})
 
 function isAlreadyAdded () {
   if (tickers.value.find((item) => item.name === ticker.value.toLowerCase()) === undefined || tickers.value.length == 0) {
@@ -33,6 +50,7 @@ function isAlreadyAdded () {
 
 function addTicker() {
   sortedSearchData.value = []
+  filter.value = ''
 
   let newTicket = {
     name: ticker.value.toLowerCase(),
@@ -49,28 +67,32 @@ function addTicker() {
 
 function update (ticketName) {
   async function subscribeToUpdate () {
-    // try {
-    const response = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${ticketName}&tsyms=USD,$api_key=2ec7c10f4ec8701eac244126c4cd4b095cd71cf20641a7fe194ae881e8e8c3bb`);
-    const result = await response.json();
-    tickers.value.find(item => item.name === ticketName).price = (result.USD > 1) ? result.USD.toFixed(2) : result.USD.toPrecision(2);
+    try {
+      const response = await fetch(`https://rest.coinapi.io/v1/exchangerate/${ticketName.toUpperCase()}/USD`, {
+        method: 'GET', // *GET, POST, PUT, DELETE, etc.
+        headers: {
+          'X-CoinAPI-Key': '37E874AF-3F5C-4DD7-A60E-1D7A0B3A93FD'
+        },
+      })
+      //https://min-api.cryptocompare.com/data/price?fsym=${ticketName}&tsyms=USD,$api_key=2ec7c10f4ec8701eac244126c4cd4b095cd71cf20641a7fe194ae881e8e8c3bb
+      const result = await response.json();
+      console.log(result)
+      tickers.value.find(item => item.name === ticketName).price = (result.rate > 1) ? result.rate.toFixed(2) : result.rate.toPrecision(2);
 
-    if (selectedTicker.value?.name === ticketName) {
-      graph.value.push(result.USD)
+      if (selectedTicker.value?.name === ticketName) {
+        graph.value.push(result.rate)
+      }
+    } catch (err) {
+      clearInterval(timerId)
+      console.log(err)
     }
-    // } catch (err) {
-    //   tickers.value.pop()
-    //   clearInterval(timerId)
-    //   alert(err)
-    //   newTicket.price = '-'
-    // }
   }
   subscribeToUpdate()
 
   let timerId = setInterval(() => {
-    console.log('sd')
     if (tickers.value.find(item => item.name === ticketName)) subscribeToUpdate()
     else clearInterval(timerId)
-  }, 3000)
+  }, 5000)
 }
 
 function deleteTicker(i) {
@@ -97,7 +119,15 @@ function search () {
   } else sortedSearchData.value = []
 }
 
+function filteredTickers () {
+  const start = (page.value - 1) * 6;
+  const end = page.value * 6
 
+  const filteredTickers = tickers.value.filter(ticker => ticker.name.includes(filter.value))
+  lastPage.value = Math.ceil(filteredTickers.length / 6)
+
+  return filteredTickers.slice(start, end)
+}
 
 // export default {
 //   name: "App",
@@ -193,9 +223,27 @@ function search () {
 
     <template v-if="tickers.length !== 0">
       <hr class="w-full border-t border-gray-600 my-4" />
+      <div class="">
+        <button
+            v-if="page > 1"
+            @click="page--"
+            class="mr-4 my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+          Назад</button>
+        <button
+            v-if="page < lastPage"
+            @click="page++"
+            class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+          Вперед</button>
+      </div>
+      <div class="">Фильтр:
+        <input
+            v-model="filter"
+            type="text">
+      </div>
+      <hr class="w-full border-t border-gray-600 my-4" />
       <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
         <div
-          v-for="(item, i) of tickers"
+          v-for="(item, i) of filteredTickers()"
           :key="item.name"
           @click="selectedTicker = item, graph = []"
           :class="{
