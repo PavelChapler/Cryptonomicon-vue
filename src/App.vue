@@ -1,18 +1,19 @@
 <script setup>
-import { ref, onMounted, watch } from "vue";
+import { ref, onMounted, watch, computed } from "vue";
 
 const ticker = ref('');
 const filter = ref('');
 const tickers = ref([]);
 const selectedTicker = ref(null);
+
 const graph = ref([]);
 const showAlreadyAdded = ref(false);
+
 const searchData = ref([]);
 const sortedSearchData = ref([]);
 const loading = ref(true);
 
 const page = ref(1);
-let lastPage = ref()
 
 
 onMounted(async () => {
@@ -28,18 +29,16 @@ onMounted(async () => {
 
   const dataURL = Object.fromEntries(new URL(window.location.href).searchParams.entries())
 
-  filter.value = dataURL.filter
-  page.value = +dataURL.page
+  if (dataURL.filter.length !== 0) filter.value = dataURL.filter
+
+  if (dataURL.page.length !== 0) page.value = +dataURL.page
 })
 
-watch(filter, () => {
-  page.value = 1
-
-  window.history.pushState(null, document.title, `${window.location.pathname}?filter=${filter.value}&page=${page.value}`)
-})
-
-watch(page, () => {
-  window.history.pushState(null, document.title, `${window.location.pathname}?filter=${filter.value}&page=${page.value}`)
+const statePageAndFilter = computed(() => {
+  return {
+    page: page.value,
+    filter: filter.value
+  }
 })
 
 function isAlreadyAdded () {
@@ -60,8 +59,7 @@ function addTicker() {
   tickers.value.push(newTicket);
   ticker.value = "";
 
-  localStorage.setItem("cryptonomicon-list", JSON.stringify(tickers.value))
-
+  console.log(localStorage.getItem("cryptonomicon-list"))
   update(newTicket.name)
 }
 
@@ -95,23 +93,24 @@ function update (ticketName) {
   }, 5000)
 }
 
-function deleteTicker(i) {
+function deleteTicker(i, item) {
   tickers.value.splice(i, 1);
 
-  localStorage.setItem("cryptonomicon-list", JSON.stringify(tickers.value))
+  if (selectedTicker.value === item) {
+    selectedTicker.value = null
+  }
+  console.log(selectedTicker.value, item)
   console.log(localStorage.getItem("cryptonomicon-list"))
 }
 
-function normalizeGraph() {
-  if (graph.value.length) {
-    const maxValue = Math.max(...graph.value)
-    const minValue = Math.min(...graph.value)
+const normalizeGraph = computed(() => {
+  const minValue = Math.max(...graph.value)
+  const maxValue = Math.min(...graph.value)
 
-    return graph.value.map(
-        price => ((price - minValue + 5) * 100) / (maxValue - minValue + 5)
-    )
-  }
-}
+  return graph.value.map(
+      price => ((price - minValue + 5) * 100) / (maxValue - minValue)
+  )
+})
 
 function search () {
   if (ticker.value.length !== 0) {
@@ -119,15 +118,45 @@ function search () {
   } else sortedSearchData.value = []
 }
 
-function filteredTickers () {
-  const start = (page.value - 1) * 6;
-  const end = page.value * 6
+const startPage = computed(() => {
+  return (page.value - 1) * 6
+})
 
-  const filteredTickers = tickers.value.filter(ticker => ticker.name.includes(filter.value))
-  lastPage.value = Math.ceil(filteredTickers.length / 6)
+const endPage = computed(() => {
+  return page.value * 6
+})
 
-  return filteredTickers.slice(start, end)
-}
+const filteredTickers = computed(() => {
+  return tickers.value.filter(ticker => ticker.name.includes(filter.value))
+})
+
+const pagesFilteredTickers = computed(() => {
+  return filteredTickers.value.slice(+startPage.value, +endPage.value)
+})
+
+const noHasLastPage = computed(() => {
+  return page.value < Math.ceil(filteredTickers.value.length / 6)
+})
+
+watch(filter, () => {
+  page.value = 1
+})
+
+watch(statePageAndFilter, (newValue) => {
+  window.history.pushState(null, document.title, `${window.location.pathname}?filter=${newValue.filter}&page=${newValue.page}`)
+})
+
+watch(selectedTicker, () => {
+  graph.value = []
+})
+
+watch(pagesFilteredTickers, () => {
+  if(pagesFilteredTickers.value.length === 0 && page.value > 1) {
+    page.value--
+  }
+  localStorage.setItem("cryptonomicon-list", JSON.stringify(tickers.value))
+})
+
 
 // export default {
 //   name: "App",
@@ -230,7 +259,7 @@ function filteredTickers () {
             class="mr-4 my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
           Назад</button>
         <button
-            v-if="page < lastPage"
+            v-if="noHasLastPage"
             @click="page++"
             class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
           Вперед</button>
@@ -243,9 +272,9 @@ function filteredTickers () {
       <hr class="w-full border-t border-gray-600 my-4" />
       <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
         <div
-          v-for="(item, i) of filteredTickers()"
+          v-for="(item, i) of pagesFilteredTickers"
           :key="item.name"
-          @click="selectedTicker = item, graph = []"
+          @click="selectedTicker = item"
           :class="{
             'border-4': selectedTicker === item
           }"
@@ -261,7 +290,7 @@ function filteredTickers () {
           </div>
           <div class="w-full border-t border-gray-200"></div>
           <button
-            @click.stop="deleteTicker(i)"
+            @click.stop="deleteTicker(i, item)"
             class="flex items-center justify-center font-medium w-full bg-gray-100 px-4 py-4 sm:px-6 text-md text-gray-500 hover:text-gray-600 hover:bg-gray-200 hover:opacity-20 transition-all focus:outline-none"
           >
             <svg
@@ -290,7 +319,7 @@ function filteredTickers () {
       </h3>
       <div class="flex items-end border-gray-600 border-b border-l h-64">
         <div
-            v-for="(bar, i) of normalizeGraph()"
+            v-for="(bar, i) of normalizeGraph"
             :key="i"
             :style="{height: `${bar}%`}"
             class="bg-purple-800 border w-10"></div>
