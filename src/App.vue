@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, watch, computed } from "vue";
+import { subscribeToUpdateTicker, unsubscribeToUpdate } from "./api";
 
 const ticker = ref('');
 const filter = ref('');
@@ -22,16 +23,23 @@ onMounted(async () => {
   searchData.value = Object.keys(result.Data)
   loading.value = false
 
-  if (localStorage.getItem("cryptonomicon-list")) {
-    tickers.value = JSON.parse(localStorage.getItem("cryptonomicon-list"))
-    tickers.value.forEach((item) => update(item.name))
+  const dataTickers = localStorage.getItem("cryptonomicon-list")
+
+  if (dataTickers) {
+    tickers.value = JSON.parse(dataTickers)
+    tickers.value.forEach(ticker => {
+      subscribeToUpdateTicker(ticker.name.toUpperCase(), (price) => {
+        updateTicker(ticker.name, price)
+      })
+    })
   }
 
   const dataURL = Object.fromEntries(new URL(window.location.href).searchParams.entries())
 
-  if (dataURL.filter.length !== 0) filter.value = dataURL.filter
+  if (dataURL.filter) filter.value = dataURL.filter
 
-  if (dataURL.page.length !== 0) page.value = +dataURL.page
+  if (dataURL.page) page.value = +dataURL.page
+
 })
 
 const statePageAndFilter = computed(() => {
@@ -47,6 +55,10 @@ function isAlreadyAdded () {
   } else showAlreadyAdded.value = true
 }
 
+function updateTicker (tickerName, price) {
+  tickers.value.filter(ticker => ticker.name === tickerName).forEach(ticker => ticker.price = price)
+}
+
 function addTicker() {
   sortedSearchData.value = []
   filter.value = ''
@@ -59,38 +71,34 @@ function addTicker() {
   tickers.value.push(newTicket);
   ticker.value = "";
 
-  console.log(localStorage.getItem("cryptonomicon-list"))
-  update(newTicket.name)
+  subscribeToUpdateTicker(newTicket.name.toUpperCase(), (price) => {
+    updateTicker(newTicket.name, price)
+  })
 }
 
-function update (ticketName) {
-  async function subscribeToUpdate () {
-    try {
-      const response = await fetch(`https://rest.coinapi.io/v1/exchangerate/${ticketName.toUpperCase()}/USD`, {
-        method: 'GET', // *GET, POST, PUT, DELETE, etc.
-        headers: {
-          'X-CoinAPI-Key': '37E874AF-3F5C-4DD7-A60E-1D7A0B3A93FD'
-        },
-      })
-      //https://min-api.cryptocompare.com/data/price?fsym=${ticketName}&tsyms=USD,$api_key=2ec7c10f4ec8701eac244126c4cd4b095cd71cf20641a7fe194ae881e8e8c3bb
-      const result = await response.json();
-      console.log(result)
-      tickers.value.find(item => item.name === ticketName).price = (result.rate > 1) ? result.rate.toFixed(2) : result.rate.toPrecision(2);
+function refactorPrice(price) {
+  if (price === '-') return price
+  return price > 1 ? price.toFixed(2) : price.toPrecision(2)
+}
 
-      if (selectedTicker.value?.name === ticketName) {
-        graph.value.push(result.rate)
-      }
-    } catch (err) {
-      clearInterval(timerId)
-      console.log(err)
-    }
+async function updateTickers () {
+
+  try {
+    // const dataTokens = await loadTokensFromApi(tickers.value.map(ticker => ticker.name.toUpperCase()))
+    // console.log(dataTokens)
+    // tickers.value.forEach(ticker => {
+    //   const price = dataTokens[ticker.name.toUpperCase()]
+    //
+    //   ticker.price = +price ?? '-'
+    // })
+    //
+    // if (dataTokens[selectedTicker.value?.name.toUpperCase()]) {
+    //   graph.value.push(dataTokens[selectedTicker.value?.name.toUpperCase()])
+    // }
+
+  } catch (err) {
+    console.log(err)
   }
-  subscribeToUpdate()
-
-  let timerId = setInterval(() => {
-    if (tickers.value.find(item => item.name === ticketName)) subscribeToUpdate()
-    else clearInterval(timerId)
-  }, 5000)
 }
 
 function deleteTicker(i, item) {
@@ -99,8 +107,7 @@ function deleteTicker(i, item) {
   if (selectedTicker.value === item) {
     selectedTicker.value = null
   }
-  console.log(selectedTicker.value, item)
-  console.log(localStorage.getItem("cryptonomicon-list"))
+  unsubscribeToUpdate(item.name.toUpperCase())
 }
 
 const normalizeGraph = computed(() => {
@@ -285,7 +292,7 @@ watch(pagesFilteredTickers, () => {
               {{ item.name.toUpperCase() }} - USD
             </dt>
             <dd class="mt-1 text-3xl font-semibold text-gray-900">
-              {{ item.price }}
+              {{ refactorPrice(item.price) }}
             </dd>
           </div>
           <div class="w-full border-t border-gray-200"></div>
