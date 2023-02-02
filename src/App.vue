@@ -3,7 +3,6 @@ import { ref, onMounted, watch, computed } from "vue";
 import { subscribeToUpdateTicker, unsubscribeToUpdate } from "./api";
 
 const ticker = ref('');
-const filter = ref('');
 const tickers = ref([]);
 const selectedTicker = ref(null);
 
@@ -15,6 +14,7 @@ const sortedSearchData = ref([]);
 const loading = ref(true);
 
 const page = ref(1);
+const filter = ref('');
 
 
 onMounted(async () => {
@@ -28,7 +28,7 @@ onMounted(async () => {
   if (dataTickers) {
     tickers.value = JSON.parse(dataTickers)
     tickers.value.forEach(ticker => {
-      subscribeToUpdateTicker(ticker.name.toUpperCase(), (price) => {
+      subscribeToUpdateTicker(ticker.name, (price) => {
         updateTicker(ticker.name, price)
       })
     })
@@ -50,13 +50,16 @@ const statePageAndFilter = computed(() => {
 })
 
 function isAlreadyAdded () {
-  if (tickers.value.find((item) => item.name === ticker.value.toLowerCase()) === undefined || tickers.value.length == 0) {
+  if (tickers.value.find((item) => item.name === ticker.value.toUpperCase()) === undefined || tickers.value.length == 0) {
     addTicker()
   } else showAlreadyAdded.value = true
 }
 
 function updateTicker (tickerName, price) {
-  tickers.value.filter(ticker => ticker.name === tickerName).forEach(ticker => ticker.price = price)
+  tickers.value.filter(ticker => ticker.name === tickerName).forEach(ticker => {
+    if (selectedTicker.value === ticker) graph.value.push(price)
+    ticker.price = price
+  })
 }
 
 function addTicker() {
@@ -64,21 +67,22 @@ function addTicker() {
   filter.value = ''
 
   let newTicket = {
-    name: ticker.value.toLowerCase(),
+    name: ticker.value.toUpperCase(),
     price: "-",
   };
 
   tickers.value.push(newTicket);
   ticker.value = "";
 
-  subscribeToUpdateTicker(newTicket.name.toUpperCase(), (price) => {
+  subscribeToUpdateTicker(newTicket.name, (price) => {
     updateTicker(newTicket.name, price)
   })
 }
 
 function refactorPrice(price) {
   if (price === '-') return price
-  return price > 1 ? price.toFixed(2) : price.toPrecision(2)
+  console.log()
+  return price > 1 ? +price.toFixed(2) : +price.toPrecision(2)
 }
 
 async function updateTickers () {
@@ -107,7 +111,7 @@ function deleteTicker(i, item) {
   if (selectedTicker.value === item) {
     selectedTicker.value = null
   }
-  unsubscribeToUpdate(item.name.toUpperCase())
+  unsubscribeToUpdate(item.name)
 }
 
 const normalizeGraph = computed(() => {
@@ -115,13 +119,13 @@ const normalizeGraph = computed(() => {
   const maxValue = Math.min(...graph.value)
 
   return graph.value.map(
-      price => ((price - minValue + 5) * 100) / (maxValue - minValue)
+      price => 5 + ((price - minValue) * 95) / (maxValue - minValue)
   )
 })
 
 function search () {
   if (ticker.value.length !== 0) {
-    sortedSearchData.value = searchData.value.filter((item) => item.toLowerCase().includes(ticker.value.toLowerCase())).slice(0, 4)
+    sortedSearchData.value = searchData.value.filter((item) => item.includes(ticker.value.toUpperCase())).slice(0, 4)
   } else sortedSearchData.value = []
 }
 
@@ -163,7 +167,6 @@ watch(pagesFilteredTickers, () => {
   }
   localStorage.setItem("cryptonomicon-list", JSON.stringify(tickers.value))
 })
-
 
 // export default {
 //   name: "App",
@@ -283,13 +286,14 @@ watch(pagesFilteredTickers, () => {
           :key="item.name"
           @click="selectedTicker = item"
           :class="{
-            'border-4': selectedTicker === item
+            'border-4': selectedTicker === item,
+            'bg-red-100': item.price === '-'
           }"
           class="bg-white overflow-hidden  shadow rounded-lg border-purple-800 border-solid cursor-pointer"
         >
           <div class="px-4 py-5 sm:p-6 text-center">
             <dt class="text-sm font-medium text-gray-500 truncate">
-              {{ item.name.toUpperCase() }} - USD
+              {{ item.name }} - USD
             </dt>
             <dd class="mt-1 text-3xl font-semibold text-gray-900">
               {{ refactorPrice(item.price) }}

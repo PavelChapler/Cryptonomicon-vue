@@ -2,42 +2,61 @@ const API_KEY = '2ec7c10f4ec8701eac244126c4cd4b095cd71cf20641a7fe194ae881e8e8c3b
 
 const tickersHandlers = new Map()
 
-async function loadTokensFromApi (tickersNames) {
-    if ([...tickersHandlers.values()].length === 0) return
+const socket = new WebSocket("wss://streamer.cryptocompare.com/v2?api_key=2ec7c10f4ec8701eac244126c4cd4b095cd71cf20641a7fe194ae881e8e8c3bb")
 
-    await fetch(`https://min-api.cryptocompare.com/data/pricemulti?fsyms=${tickersNames.join(',')}&tsyms=USD&api_key=${API_KEY}`, {
-        method: 'GET', // *GET, POST, PUT, DELETE, etc.
-        headers: {
-            // 'X-CoinAPI-Key': '37E874AF-3F5C-4DD7-A60E-1D7A0B3A93FD'
-        },
-    }).then(value => value.json())
-      .then(value => {
-          const updatedPrices = Object.fromEntries(Object.entries(value).map(([key, content]) => [key, content.USD]))
+const AGGREGATE_INDEX = "5"
 
-          Object.entries(updatedPrices).forEach(([currency, price]) => {
+socket.addEventListener("message", (e) => {
+    let {TYPE: type, FROMSYMBOL: token, PRICE: price} = JSON.parse(e.data)
 
-              const handlers = tickersHandlers.get(currency) ?? []
+    if (type !== AGGREGATE_INDEX) {
+        return
+    }
 
-              handlers.forEach(fn => fn(price))
 
-          })
-      })
+
+    const handlers = tickersHandlers.get(token) ?? []
+    handlers.forEach(fn => fn(price))
+})
+
+function subscribeToWS (tickerName) {
+    sendToWS(JSON.stringify({
+        action: "SubAdd",
+        subs: [`5~CCCAGG~${tickerName}~USD`]
+    }))
 }
+
+function unsubscribeToWS (tickerName) {
+    sendToWS(JSON.stringify({
+        action: "SubRemove",
+        subs: [`5~CCCAGG~${tickerName}~USD`]
+    }))
+}
+
+function sendToWS (message) {
+    if(socket.readyState === WebSocket.OPEN) {
+        socket.send(message)
+        return
+    }
+
+    socket.addEventListener("open", () => {
+        socket.send(message)
+    }, { once: true })
+}
+
 
 
 export function subscribeToUpdateTicker (ticker, cb) {
     const subscribesFunctions = tickersHandlers.get(ticker) || []
     tickersHandlers.set(ticker, [...subscribesFunctions, cb])
+    subscribeToWS(ticker)
 }
 
 export function unsubscribeToUpdate (tickerName) {
     tickersHandlers.delete(tickerName)
+    unsubscribeToWS(tickerName)
 }
 
-
-setInterval(() => {
-    loadTokensFromApi([...tickersHandlers.keys()])
-}, 5000)
 
 window.tickersHandlers = tickersHandlers
 //https://rest.coinapi.io/v1/exchangerate/${ticketName.toUpperCase()}/USD`
