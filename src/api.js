@@ -7,13 +7,20 @@ const socket = new WebSocket("wss://streamer.cryptocompare.com/v2?api_key=2ec7c1
 const AGGREGATE_INDEX = "5"
 
 socket.addEventListener("message", (e) => {
-    let {TYPE: type, FROMSYMBOL: token, PRICE: price} = JSON.parse(e.data)
+    let {TYPE: type, FROMSYMBOL: token, PRICE: price, PARAMETER: parameter, MESSAGE: message} = JSON.parse(e.data)
 
-    if (type !== AGGREGATE_INDEX) {
-        return
+    if (type === '500' && message !== 'SUBSCRIPTION_ALREADY_ACTIVE') {
+        const invalidTokenName = parameter.split('~')[2]
+
+        const newPrice = price ?? '–'
+
+        const handlers = tickersHandlers.get(invalidTokenName) ?? []
+        handlers.forEach(fn => fn(newPrice))
     }
 
-
+    if (type !== AGGREGATE_INDEX || price === undefined) {
+        return
+    }
 
     const handlers = tickersHandlers.get(token) ?? []
     handlers.forEach(fn => fn(price))

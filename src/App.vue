@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch, computed } from "vue";
+import {ref, onMounted, watch, computed, onBeforeUnmount} from "vue";
 import { subscribeToUpdateTicker, unsubscribeToUpdate } from "./api";
 
 const ticker = ref('');
@@ -7,6 +7,9 @@ const tickers = ref([]);
 const selectedTicker = ref(null);
 
 const graph = ref([]);
+const graphDom = ref(null);
+const graphBarWidth = 38;
+const maxGraphElements = ref(100);
 const showAlreadyAdded = ref(false);
 
 const searchData = ref([]);
@@ -40,6 +43,17 @@ onMounted(async () => {
 
   if (dataURL.page) page.value = +dataURL.page
 
+  window.addEventListener('resize', () => {
+    calculateMaxGraphElements()
+    graph.value = graph.value.slice(0, maxGraphElements.value)
+  })
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', () => {
+    calculateMaxGraphElements()
+    graph.value = graph.value.slice(0, maxGraphElements.value)
+  })
 })
 
 const statePageAndFilter = computed(() => {
@@ -55,9 +69,23 @@ function isAlreadyAdded () {
   } else showAlreadyAdded.value = true
 }
 
+function calculateMaxGraphElements () {
+  if (!graphDom.value) return
+
+  maxGraphElements.value = graphDom.value.clientWidth / graphBarWidth
+}
+
 function updateTicker (tickerName, price) {
+  calculateMaxGraphElements()
+
   tickers.value.filter(ticker => ticker.name === tickerName).forEach(ticker => {
-    if (selectedTicker.value === ticker) graph.value.push(price)
+    if (selectedTicker.value === ticker) {
+      graph.value.push(price)
+
+      if (graph.value.length > maxGraphElements.value) {
+        graph.value.shift()
+      }
+    }
     ticker.price = price
   })
 }
@@ -80,7 +108,7 @@ function addTicker() {
 }
 
 function refactorPrice(price) {
-  if (price === '-') return price
+  if (price === '-' || price === '–') return price
   console.log()
   return price > 1 ? +price.toFixed(2) : +price.toPrecision(2)
 }
@@ -115,11 +143,11 @@ function deleteTicker(i, item) {
 }
 
 const normalizeGraph = computed(() => {
-  const minValue = Math.max(...graph.value)
-  const maxValue = Math.min(...graph.value)
+  const minValue = Math.min(...graph.value)
+  const maxValue = Math.max(...graph.value)
 
   return graph.value.map(
-      price => 5 + ((price - minValue) * 95) / (maxValue - minValue)
+      price => 5 + ((price - minValue) * 100) / (maxValue - minValue)
   )
 })
 
@@ -128,6 +156,8 @@ function search () {
     sortedSearchData.value = searchData.value.filter((item) => item.includes(ticker.value.toUpperCase())).slice(0, 4)
   } else sortedSearchData.value = []
 }
+
+
 
 const startPage = computed(() => {
   return (page.value - 1) * 6
@@ -287,7 +317,7 @@ watch(pagesFilteredTickers, () => {
           @click="selectedTicker = item"
           :class="{
             'border-4': selectedTicker === item,
-            'bg-red-100': item.price === '-'
+            'bg-red-100': item.price === '–'
           }"
           class="bg-white overflow-hidden  shadow rounded-lg border-purple-800 border-solid cursor-pointer"
         >
@@ -324,16 +354,21 @@ watch(pagesFilteredTickers, () => {
     </template>
     <section
         v-if="selectedTicker"
-        class="relative">
+        class="relative"
+        >
       <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
         {{ selectedTicker.name }} - USD
       </h3>
-      <div class="flex items-end border-gray-600 border-b border-l h-64">
+      <div
+          ref="graphDom"
+          class="flex items-end border-gray-600 border-b border-l h-64"
+      >
         <div
             v-for="(bar, i) of normalizeGraph"
             :key="i"
-            :style="{height: `${bar}%`}"
-            class="bg-purple-800 border w-10"></div>
+            :style="{height: `${bar}%`,
+                     width: `${graphBarWidth}px`}"
+            class="bg-purple-800 border"></div>
       </div >
       <button
           @click="selectedTicker = null"
