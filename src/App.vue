@@ -1,202 +1,143 @@
 <script setup>
-import {ref, onMounted, watch, computed, onBeforeUnmount} from "vue";
+import { ref, onMounted, watch, computed } from "vue";
 import { subscribeToUpdateTicker, unsubscribeToUpdate } from "./api";
+import AddTicker from "./components/AddTicker.vue";
+import AddGraph from "./components/AddGraph.vue";
 
-const ticker = ref('');
 const tickers = ref([]);
-const selectedTicker = ref(null);
+const selectedTicker = ref(undefined);
 
 const graph = ref([]);
-const graphDom = ref(null);
-const graphBarWidth = 38;
-const maxGraphElements = ref(100);
-const showAlreadyAdded = ref(false);
-
-const searchData = ref([]);
-const sortedSearchData = ref([]);
 const loading = ref(true);
 
 const page = ref(1);
-const filter = ref('');
-
+const filter = ref("");
 
 onMounted(async () => {
-  const response = await fetch("https://min-api.cryptocompare.com/data/all/coinlist?summary=true")
-  const result = await response.json()
-  searchData.value = Object.keys(result.Data)
-  loading.value = false
+  loading.value = false;
 
-  const dataTickers = localStorage.getItem("cryptonomicon-list")
+  const dataTickers = localStorage.getItem("cryptonomicon-list");
 
   if (dataTickers) {
-    tickers.value = JSON.parse(dataTickers)
-    tickers.value.forEach(ticker => {
+    tickers.value = JSON.parse(dataTickers);
+    tickers.value.forEach((ticker) => {
       subscribeToUpdateTicker(ticker.name, (price) => {
-        updateTicker(ticker.name, price)
-      })
-    })
+        updateTicker(ticker.name, price);
+      });
+    });
   }
 
-  const dataURL = Object.fromEntries(new URL(window.location.href).searchParams.entries())
+  const dataURL = Object.fromEntries(
+    new URL(window.location.href).searchParams.entries()
+  );
 
-  if (dataURL.filter) filter.value = dataURL.filter
+  if (dataURL.filter) filter.value = dataURL.filter;
 
-  if (dataURL.page) page.value = +dataURL.page
-
-  window.addEventListener('resize', () => {
-    calculateMaxGraphElements()
-    graph.value = graph.value.slice(0, maxGraphElements.value)
-  })
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', () => {
-    calculateMaxGraphElements()
-    graph.value = graph.value.slice(0, maxGraphElements.value)
-  })
-})
+  if (dataURL.page) page.value = +dataURL.page;
+});
 
 const statePageAndFilter = computed(() => {
   return {
     page: page.value,
-    filter: filter.value
-  }
-})
+    filter: filter.value,
+  };
+});
 
-function isAlreadyAdded () {
-  if (tickers.value.find((item) => item.name === ticker.value.toUpperCase()) === undefined || tickers.value.length == 0) {
-    addTicker()
-  } else showAlreadyAdded.value = true
-}
-
-function calculateMaxGraphElements () {
-  if (!graphDom.value) return
-
-  maxGraphElements.value = graphDom.value.clientWidth / graphBarWidth
-}
-
-function updateTicker (tickerName, price) {
-  calculateMaxGraphElements()
-
-  tickers.value.filter(ticker => ticker.name === tickerName).forEach(ticker => {
-    if (selectedTicker.value === ticker) {
-      graph.value.push(price)
-
-      if (graph.value.length > maxGraphElements.value) {
-        graph.value.shift()
+function updateTicker(tickerName, price) {
+  tickers.value
+    .filter((ticker) => ticker.name === tickerName)
+    .forEach((ticker) => {
+      if (selectedTicker.value === ticker) {
+        graph.value.push(price);
       }
-    }
-    ticker.price = price
-  })
+      ticker.price = price;
+    });
 }
 
-function addTicker() {
-  sortedSearchData.value = []
-  filter.value = ''
+const maxGraphElements = ref(0);
+
+watch(
+  () => graph.value.length,
+  () => {
+    console.log(maxGraphElements.value);
+    if (graph.value.length > maxGraphElements.value) {
+      graph.value.shift();
+    }
+  }
+);
+
+function addTicker(ticker) {
+  filter.value = "";
 
   let newTicket = {
-    name: ticker.value.toUpperCase(),
+    name: ticker.toUpperCase(),
     price: "-",
   };
 
   tickers.value.push(newTicket);
-  ticker.value = "";
 
   subscribeToUpdateTicker(newTicket.name, (price) => {
-    updateTicker(newTicket.name, price)
-  })
+    updateTicker(newTicket.name, price);
+  });
 }
 
 function refactorPrice(price) {
-  if (price === '-' || price === '–') return price
-  console.log()
-  return price > 1 ? +price.toFixed(2) : +price.toPrecision(2)
-}
-
-async function updateTickers () {
-
-  try {
-    // const dataTokens = await loadTokensFromApi(tickers.value.map(ticker => ticker.name.toUpperCase()))
-    // console.log(dataTokens)
-    // tickers.value.forEach(ticker => {
-    //   const price = dataTokens[ticker.name.toUpperCase()]
-    //
-    //   ticker.price = +price ?? '-'
-    // })
-    //
-    // if (dataTokens[selectedTicker.value?.name.toUpperCase()]) {
-    //   graph.value.push(dataTokens[selectedTicker.value?.name.toUpperCase()])
-    // }
-
-  } catch (err) {
-    console.log(err)
-  }
+  if (price === "-" || price === "–") return price;
+  console.log();
+  return price > 1 ? +price.toFixed(2) : +price.toPrecision(2);
 }
 
 function deleteTicker(i, item) {
   tickers.value.splice(i, 1);
 
   if (selectedTicker.value === item) {
-    selectedTicker.value = null
+    selectedTicker.value = null;
   }
-  unsubscribeToUpdate(item.name)
+  unsubscribeToUpdate(item.name);
 }
-
-const normalizeGraph = computed(() => {
-  const minValue = Math.min(...graph.value)
-  const maxValue = Math.max(...graph.value)
-
-  return graph.value.map(
-      price => 5 + ((price - minValue) * 100) / (maxValue - minValue)
-  )
-})
-
-function search () {
-  if (ticker.value.length !== 0) {
-    sortedSearchData.value = searchData.value.filter((item) => item.includes(ticker.value.toUpperCase())).slice(0, 4)
-  } else sortedSearchData.value = []
-}
-
-
 
 const startPage = computed(() => {
-  return (page.value - 1) * 6
-})
+  return (page.value - 1) * 6;
+});
 
 const endPage = computed(() => {
-  return page.value * 6
-})
+  return page.value * 6;
+});
 
 const filteredTickers = computed(() => {
-  return tickers.value.filter(ticker => ticker.name.includes(filter.value))
-})
+  return tickers.value.filter((ticker) => ticker.name.includes(filter.value));
+});
 
 const pagesFilteredTickers = computed(() => {
-  return filteredTickers.value.slice(+startPage.value, +endPage.value)
-})
+  return filteredTickers.value.slice(+startPage.value, +endPage.value);
+});
 
 const noHasLastPage = computed(() => {
-  return page.value < Math.ceil(filteredTickers.value.length / 6)
-})
+  return page.value < Math.ceil(filteredTickers.value.length / 6);
+});
 
 watch(filter, () => {
-  page.value = 1
-})
+  page.value = 1;
+});
 
 watch(statePageAndFilter, (newValue) => {
-  window.history.pushState(null, document.title, `${window.location.pathname}?filter=${newValue.filter}&page=${newValue.page}`)
-})
-
-watch(selectedTicker, () => {
-  graph.value = []
-})
+  window.history.pushState(
+    null,
+    document.title,
+    `${window.location.pathname}?filter=${newValue.filter}&page=${newValue.page}`
+  );
+});
 
 watch(pagesFilteredTickers, () => {
-  if(pagesFilteredTickers.value.length === 0 && page.value > 1) {
-    page.value--
+  if (pagesFilteredTickers.value.length === 0 && page.value > 1) {
+    page.value--;
   }
-  localStorage.setItem("cryptonomicon-list", JSON.stringify(tickers.value))
-})
+  localStorage.setItem("cryptonomicon-list", JSON.stringify(tickers.value));
+});
+
+watch(selectedTicker, () => {
+  graph.value = [];
+});
 
 // export default {
 //   name: "App",
@@ -224,90 +165,54 @@ watch(pagesFilteredTickers, () => {
 <template>
   <div class="container">
     <div
-        v-if="loading"
-        class="fixed w-100 h-100 opacity-80 bg-purple-800 inset-0 z-50 flex items-center justify-center">
-      <svg class="animate-spin -ml-1 mr-3 h-12 w-12 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      v-if="loading"
+      class="fixed w-100 h-100 opacity-80 bg-purple-800 inset-0 z-50 flex items-center justify-center"
+    >
+      <svg
+        class="animate-spin -ml-1 mr-3 h-12 w-12 text-white"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          class="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          stroke-width="4"
+        ></circle>
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        ></path>
       </svg>
     </div>
 
-    <section>
-      <div class="flex">
-        <div class="max-w-xs">
-          <label class="block text-sm font-medium text-gray-700" for="wallet"
-            >Тикер</label
-          >
-          <div class="mt-1 relative rounded-md shadow-md">
-            <input
-              v-model="ticker"
-              @keydown.enter="isAlreadyAdded"
-              @input="showAlreadyAdded = false, search()"
-              type="text"
-              name="wallet"
-              id="wallet"
-              class="block w-full pr-10 border-gray-300 text-gray-900 focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm rounded-md"
-              placeholder="Например DOGE"
-            />
-          </div>
-          <div
-            v-if="sortedSearchData.length > 0"
-            class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap"
-          >
-            <span
-              v-for="(token, i) of sortedSearchData"
-              :key="i"
-              @click="ticker = token, isAlreadyAdded()"
-              class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
-            >
-              {{ token }}
-            </span>
-          </div>
-          <div
-              v-show="showAlreadyAdded"
-              class="text-sm text-red-600">Такой тикер уже добавлен</div>
-        </div>
-      </div>
-      <button
-        @click="isAlreadyAdded"
-        type="button"
-        class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-      >
-        <!-- Heroicon name: solid/mail -->
-        <svg
-          class="-ml-0.5 mr-2 h-6 w-6"
-          xmlns="http://www.w3.org/2000/svg"
-          width="30"
-          height="30"
-          viewBox="0 0 24 24"
-          fill="#ffffff"
-        >
-          <path
-            d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7zm-1-5C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"
-          ></path>
-        </svg>
-        Добавить
-      </button>
-    </section>
+    <AddTicker @add-ticker="addTicker" :tickers="tickers" />
 
     <template v-if="tickers.length !== 0">
       <hr class="w-full border-t border-gray-600 my-4" />
       <div class="">
         <button
-            v-if="page > 1"
-            @click="page--"
-            class="mr-4 my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
-          Назад</button>
+          v-if="page > 1"
+          @click="page--"
+          class="mr-4 my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+        >
+          Назад
+        </button>
         <button
-            v-if="noHasLastPage"
-            @click="page++"
-            class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
-          Вперед</button>
+          v-if="noHasLastPage"
+          @click="page++"
+          class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+        >
+          Вперед
+        </button>
       </div>
-      <div class="">Фильтр:
-        <input
-            v-model="filter"
-            type="text">
+      <div class="">
+        Фильтр:
+        <input v-model="filter" type="text" />
       </div>
       <hr class="w-full border-t border-gray-600 my-4" />
       <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
@@ -317,9 +222,10 @@ watch(pagesFilteredTickers, () => {
           @click="selectedTicker = item"
           :class="{
             'border-4': selectedTicker === item,
-            'bg-red-100': item.price === '–'
+            'bg-red-100': item.price === '–',
+            'bg-white': item.price !== '–',
           }"
-          class="bg-white overflow-hidden  shadow rounded-lg border-purple-800 border-solid cursor-pointer"
+          class="overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
         >
           <div class="px-4 py-5 sm:p-6 text-center">
             <dt class="text-sm font-medium text-gray-500 truncate">
@@ -352,50 +258,14 @@ watch(pagesFilteredTickers, () => {
       </dl>
       <hr class="w-full border-t border-gray-600 my-4" />
     </template>
-    <section
-        v-if="selectedTicker"
-        class="relative"
-        >
-      <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
-        {{ selectedTicker.name }} - USD
-      </h3>
-      <div
-          ref="graphDom"
-          class="flex items-end border-gray-600 border-b border-l h-64"
-      >
-        <div
-            v-for="(bar, i) of normalizeGraph"
-            :key="i"
-            :style="{height: `${bar}%`,
-                     width: `${graphBarWidth}px`}"
-            class="bg-purple-800 border"></div>
-      </div >
-      <button
-          @click="selectedTicker = null"
-          type="button" class="absolute top-0 right-0">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          xmlns:xlink="http://www.w3.org/1999/xlink"
-          xmlns:svgjs="http://svgjs.com/svgjs"
-          version="1.1"
-          width="30"
-          height="30"
-          x="0"
-          y="0"
-          viewBox="0 0 511.76 511.76"
-          style="enable-background: new 0 0 512 512"
-          xml:space="preserve"
-        >
-          <g>
-            <path
-              d="M436.896,74.869c-99.84-99.819-262.208-99.819-362.048,0c-99.797,99.819-99.797,262.229,0,362.048    c49.92,49.899,115.477,74.837,181.035,74.837s131.093-24.939,181.013-74.837C536.715,337.099,536.715,174.688,436.896,74.869z     M361.461,331.317c8.341,8.341,8.341,21.824,0,30.165c-4.16,4.16-9.621,6.251-15.083,6.251c-5.461,0-10.923-2.091-15.083-6.251    l-75.413-75.435l-75.392,75.413c-4.181,4.16-9.643,6.251-15.083,6.251c-5.461,0-10.923-2.091-15.083-6.251    c-8.341-8.341-8.341-21.845,0-30.165l75.392-75.413l-75.413-75.413c-8.341-8.341-8.341-21.845,0-30.165    c8.32-8.341,21.824-8.341,30.165,0l75.413,75.413l75.413-75.413c8.341-8.341,21.824-8.341,30.165,0    c8.341,8.32,8.341,21.824,0,30.165l-75.413,75.413L361.461,331.317z"
-              fill="#718096"
-              data-original="#000000"
-            ></path>
-          </g>
-        </svg>
-      </button>
-    </section>
+
+    <add-graph
+      v-show="selectedTicker"
+      @update-graph="(arg) => (maxGraphElements = arg)"
+      :selected-ticker="selectedTicker"
+      :graph="graph"
+      @close-graph="() => (selectedTicker = null)"
+    />
   </div>
 </template>
 
