@@ -105,7 +105,9 @@ const endPage = computed(() => {
 });
 
 const filteredTickers = computed(() => {
-  return tickers.value.filter((ticker) => ticker.name.includes(filter.value));
+  return tickers.value.filter((ticker) =>
+    ticker.name.includes(filter.value.toUpperCase())
+  );
 });
 
 const pagesFilteredTickers = computed(() => {
@@ -260,7 +262,7 @@ watch(selectedTicker, () => {
     </template>
 
     <add-graph
-      v-show="selectedTicker"
+      v-if="selectedTicker"
       @update-graph="(arg) => (maxGraphElements = arg)"
       :selected-ticker="selectedTicker"
       :graph="graph"

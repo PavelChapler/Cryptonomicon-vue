@@ -3,9 +3,12 @@ const API_KEY =
 
 const tickersHandlers = new Map();
 
-const socket = new WebSocket(
-  "wss://streamer.cryptocompare.com/v2?api_key=2ec7c10f4ec8701eac244126c4cd4b095cd71cf20641a7fe194ae881e8e8c3bb"
+const url = new URL("v2", "wss://streamer.cryptocompare.com");
+url.searchParams.append(
+  "api_key",
+  "2ec7c10f4ec8701eac244126c4cd4b095cd71cf20641a7fe194ae881e8e8c3bb"
 );
+const socket = new WebSocket(url);
 
 const AGGREGATE_INDEX = "5";
 
